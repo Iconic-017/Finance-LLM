@@ -3,3 +3,4 @@ sentence-transformers==0.3.0
 pinecone-client
 langchain==0.0.225
 flask
+pypdf
