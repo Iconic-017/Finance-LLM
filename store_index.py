@@ -6,7 +6,7 @@ from src.helper import load_pdf , text_splitter , download_embedding_model
 
 
 load_dotenv()
-PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
+os.environ['PINECONE_API_KEY'] = "1840affb-9ae0-426c-920e-df290252ede2"
 index_name = "medical-chatbot"
 
 #data extraction
