@@ -30,17 +30,7 @@ High-level flow:
 
 Conceptual diagram:
 
-```mermaid
-flowchart LR
-    A[User Query] --> B{Live data intent?}
-    B -- Yes --> C[yFinance Fetch]
-    C --> G[Final Response]
-    B -- No --> D[Retriever (Pinecone + Embeddings)]
-    D --> E[LLM (CTransformers LLaMA)]
-    E --> F{Confident?}
-    F -- No --> C
-    F -- Yes --> G
-```
+![Architecture Diagram](templates/image.png)
 
 ---
 
