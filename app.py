@@ -1,61 +1,103 @@
-from flask import Flask , render_template , request , jsonify
+import os
+from flask import Flask, render_template, request
+from dotenv import load_dotenv
+
 from langchain.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
-from pinecone import Pinecone
-from langchain_community.llms import CTransformers
 from langchain_pinecone import PineconeVectorStore
-from src.helper import download_embedding_model
-from dotenv import load_dotenv
-from src.prompt import *
-import os
+from langchain_community.llms import CTransformers
 
-app =Flask(__name__)  # defining flask object
+from src.helper import download_embedding_model, get_financial_data
+from src.prompt import prompt_template
 
+
+# ------------------- Flask App -------------------
+app = Flask(__name__)
+
+# ------------------- Environment -------------------
 load_dotenv()
-os.environ['PINECONE_API_KEY'] = "1840affb-9ae0-426c-920e-df290252ede2"
-index_name = "medical-chatbot"
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+INDEX_NAME = "finance-chatbot"
+NAMESPACE = "finance"
 
-# embedding model object
+# ------------------- Embeddings -------------------
 embeddings = download_embedding_model()
 
-# intializing the pinecone
-pc = Pinecone(api_key="1840affb-9ae0-426c-920e-df290252ede2")
-index = pc.Index("medical-chatbot")
-
-#loading the index
-docsearch = PineconeVectorStore.from_existing_index(index_name,embeddings)
-
-PROMPT = PromptTemplate(template=prompt_template, input_variables=["context","question"])
-chain_type_kwargs = {"prompt":PROMPT}
-
-# loading our model:
-llm = CTransformers(model="model/llama-2-7b-chat.ggmlv3.q4_0.bin",
-                    model_type = "llama",
-                    config = {'max_new_tokens':512,
-                              'temperature':0.8})
-
-# defining question-answer object
-qa = RetrievalQA.from_chain_type(
-  llm = llm,
-  chain_type = "stuff",
-  retriever = docsearch.as_retriever(search_kwargs = {'k' : 2}),
-  return_source_documents = True,
-  chain_type_kwargs = chain_type_kwargs
+# ------------------- Pinecone VectorStore -------------------
+print("🔗 Connecting to Pinecone index...")
+docsearch = PineconeVectorStore.from_existing_index(
+    index_name=INDEX_NAME,
+    embedding=embeddings,
+    namespace=NAMESPACE
 )
 
+# ------------------- Prompt -------------------
+PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+chain_type_kwargs = {"prompt": PROMPT}
+
+# ------------------- Local LLM -------------------
+llm = CTransformers(
+    model="model/llama-2-7b-chat.ggmlv3.q4_0.bin",   # make sure model file exists
+    model_type="llama",
+    config={
+        "max_new_tokens": 512,
+        "temperature": 0.5,      # lower temp = more deterministic answers
+    },
+    local_files_only=True
+)
+
+# ------------------- Optimized Retriever -------------------
+retriever = docsearch.as_retriever(
+    search_type="mmr",   # ✅ Maximal Marginal Relevance: balances relevance + diversity
+    search_kwargs={
+        "k": 3,          # ✅ return top 3 chunks (speed + accuracy)
+        "fetch_k": 20,   # ✅ fetch 20, then rerank (tradeoff between speed & context)
+    }
+)
+
+# ------------------- RetrievalQA Chain -------------------
+qa = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever=retriever,
+    return_source_documents=True,
+    chain_type_kwargs=chain_type_kwargs
+)
+
+
+# ------------------- Routes -------------------
 @app.route("/")
 def index():
-  return render_template("chat.html")
+    return render_template("chat.html")
 
-@app.route("/get", methods = ["GET","POST"])
+
+@app.route("/get", methods=["POST"])
 def chat():
-  msg = request.form["msg"]
-  input = msg
-  print(input)
-  result = qa.invoke({"query": input})
-  print("response: ",result["result"])
-  return str(result["result"])
+    user_input = request.form["msg"]
 
-if(__name__ == "__main__"):
-  app.run(debug=True)
+    try:
+        # --- Quick check: if user asks about stock price/market data, skip RAG ---
+        keywords = ["price", "stock", "market cap", "pe ratio", "dividend"]
+        if any(word in user_input.lower() for word in keywords):
+            fallback = get_financial_data(user_input)
+            return fallback
 
+        # --- Otherwise, go through RAG ---
+        result = qa.invoke({"query": user_input})
+        response = result["result"]
+
+        # If LLM doesn't know, fallback
+        if "i don't know" in response.lower():
+            fallback = get_financial_data(user_input)
+            return fallback
+
+        return response
+
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+
+
+
+# ------------------- Run -------------------
+if __name__ == "__main__":
+    app.run(debug=True)

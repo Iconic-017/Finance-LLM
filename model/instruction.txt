@@ -1,5 +1,6 @@
-##Download Llama-2 model:
-llama-2-7b-chat.ggmlv3.q4_0.bin
+## Download LLaMA Model
+Place your LLaMA model file in the `model/` directory.
+Example:
 
-download link:
-https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGML/tree/main
+You can download LLaMA weights from HuggingFace (after getting access):  
+👉 [https://huggingface.co/meta-llama](https://huggingface.co/meta-llama)

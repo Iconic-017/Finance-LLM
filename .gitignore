@@ -2,6 +2,12 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.env
+
+model/*
+*.bin
+*.ggml*
+*.gguf*
 
 # C extensions
 *.so
